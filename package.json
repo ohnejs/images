@@ -1,0 +1,36 @@
+{
+  "name": "ohne-images",
+  "version": "0.0.1",
+  "description": "The reference image service for the ohne uploads image protocol.",
+  "license": "MIT",
+  "author": "Muris Ceman <muris@ohne.dev>",
+  "bin": {
+    "ohne-images": "./bin.js"
+  },
+  "files": [
+    "bin.js",
+    "src"
+  ],
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt",
+    "lint": "oxlint",
+    "start": "node bin.js",
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/node-compile node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "sharp": "0.35.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "oxfmt": "0.55.0",
+    "oxlint": "1.70.0",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "engineStrict": true,
+  "packageManager": "pnpm@11.5.1"
+}

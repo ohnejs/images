@@ -6,6 +6,7 @@ import sharp from 'sharp';
 
 import type { FixtureOrigin } from './_fixtures.ts';
 
+import { LRU } from '../src/lru.ts';
 import { createImageServer } from '../src/server.ts';
 import { variantOf } from '../src/transforms.ts';
 import {
@@ -190,6 +191,54 @@ describe('createImageServer', () => {
     ok(queried.body.equals(plain.body));
   });
 
+  it('answers 403 to a URL whose expiry has passed', async () => {
+    for (const expires of [1, Date.now()]) {
+      failure(await request(url(`w_100,e_${expires}`, 'photo.jpg')), 403, 'Link expired');
+    }
+  });
+
+  it('renders an expiring URL with private caching for the time it has left', async () => {
+    const answer = await request(url(`w_100,f_webp,e_${Date.now() + 3_600_000}`, 'photo.jpg'));
+    strictEqual(answer.status, 200);
+    strictEqual(answer.headers['content-type'], 'image/webp');
+    const maxAge = Number(/^private, max-age=(\d+)$/.exec(answer.headers['cache-control'])?.[1]);
+    ok(maxAge > 3500 && maxAge <= 3600, answer.headers['cache-control']);
+    deepStrictEqual(await size(answer.body), { width: 100, height: 67, format: 'webp' });
+  });
+
+  it('opens a private original only for a URL that expires', async () => {
+    const own = new Map([['scan.png', files.get('photo.png')!]]);
+    const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
+    try {
+      const at = await start(secured.url, { sourceSecret: 'uploads', sourceTTL: 60_000 });
+      const expiring = await request(
+        variantURL(at, `w_90,e_${Date.now() + 3_600_000}`, 'scan.png'),
+      );
+      strictEqual(expiring.status, 200);
+      failure(await request(variantURL(at, 'w_90', 'scan.png')), 404, 'Not found');
+      strictEqual(secured.hits.refused, 1);
+    } finally {
+      secured.close();
+    }
+  });
+
+  it('shares one render between expiry windows', async () => {
+    const now = Date.now();
+    const set = mock.method(LRU.prototype, 'set');
+    try {
+      const first = await request(url(`w_130,f_webp,e_${now + 3_600_000}`, 'photo.jpg'));
+      const stored = set.mock.callCount();
+      const second = await request(url(`w_130,f_webp,e_${now + 7_200_000}`, 'photo.jpg'));
+      strictEqual(first.status, 200);
+      strictEqual(second.status, 200);
+      ok(second.body.equals(first.body));
+      ok(stored > 0);
+      strictEqual(set.mock.callCount(), stored);
+    } finally {
+      set.mock.restore();
+    }
+  });
+
   it('negotiates f_auto from Accept and varies on it', async () => {
     const target = url('w_100,f_auto', 'photo.jpg');
     const avif = await request(target, { headers: { Accept: 'image/avif,image/webp' } });
@@ -264,6 +313,15 @@ describe('createImageServer', () => {
     ]) {
       failure(await at(transforms), 403, 'Unlisted variant');
     }
+  });
+
+  it('matches the allowlist without the expiry token', async () => {
+    const at = (transforms: string): Promise<Answer> =>
+      request(variantURL(listed, transforms, 'focal.png'));
+    const ahead = Date.now() + 60_000;
+    strictEqual((await at(`w_64,h_64,f_png,fp_0.5_0.75,e_${ahead}`)).status, 200);
+    failure(await at('w_64,h_64,f_png,e_1'), 403, 'Link expired');
+    failure(await at(`w_65,h_64,f_png,e_${ahead}`), 403, 'Unlisted variant');
   });
 
   it('drops the variants of a replaced source and answers 404 once it is gone', async () => {

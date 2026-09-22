@@ -9,7 +9,7 @@ import sharp from 'sharp';
 
 import type { Config } from '../src/config.ts';
 
-import { signImageVariant } from '../src/sign.ts';
+import { signImageVariant, verifyImageVariant } from '../src/sign.ts';
 
 /**
  * A fixture origin: the files it serves, what it has answered, and how to stop it.
@@ -23,7 +23,7 @@ export interface FixtureOrigin {
   /**
    * How often each branch has answered.
    */
-  hits: { ok: number; notModified: number; notFound: number };
+  hits: { ok: number; notModified: number; notFound: number; refused: number };
 
   /**
    * Stops the server and drops its connections.
@@ -73,15 +73,23 @@ export async function fixtures(): Promise<Map<string, Buffer>> {
 /**
  * Serves `files` under `/uploads/<name>` on a free port, with strong ETags unless `etags` is `false`.
  * A matching `If-None-Match` answers `304`, an unknown name `404`, and `error.jpg` `500`.
+ * With `sourceSecret`, every file is private: a fetch is `404`, as ohne answers one, unless its link opens.
+ * The link opens when `s` signs `e_<e>/<name>` under `sourceSecret` and `e` is still ahead.
  * The Map is live, so a test can replace or delete a file between requests.
  */
 export async function serveFixtures(
   files: Map<string, Buffer>,
-  { etags = true }: { etags?: boolean } = {},
+  { etags = true, sourceSecret }: { etags?: boolean; sourceSecret?: string } = {},
 ): Promise<FixtureOrigin> {
-  const hits = { ok: 0, notModified: 0, notFound: 0 };
+  const hits = { ok: 0, notModified: 0, notFound: 0, refused: 0 };
   const server = createServer((req, res) => {
-    const name = (req.url ?? '').replace(/^\/uploads\//, '');
+    const [route, query = ''] = (req.url ?? '').split('?', 2);
+    const name = route.replace(/^\/uploads\//, '');
+    if (sourceSecret !== undefined && !linkOpens(query, name, sourceSecret)) {
+      hits.refused += 1;
+      res.writeHead(404);
+      return res.end();
+    }
     if (name === 'error.jpg') {
       res.writeHead(500);
       return res.end();
@@ -114,6 +122,18 @@ export async function serveFixtures(
 }
 
 /**
+ * Whether `query` carries an `e` still ahead and an `s` signing `e_<e>/<name>` under `secret`.
+ */
+function linkOpens(query: string, name: string, secret: string): boolean {
+  const params = new URLSearchParams(query);
+  const expires = params.get('e') ?? '';
+  const signature = params.get('s') ?? '';
+  return (
+    Number(expires) > Date.now() && verifyImageVariant(signature, `e_${expires}`, name, [secret])
+  );
+}
+
+/**
  * Starts `server` on a free loopback port and resolves its base URL.
  */
 export async function listen(server: Server): Promise<string> {
@@ -133,6 +153,7 @@ export function testConfig(source: string, overrides: Partial<Config> = {}): Con
     secrets: ['test'],
     unsigned: false,
     source,
+    sourceSecret: undefined,
     variants: undefined,
     sourceTTL: 0,
     cacheBytes: 64 * 1024 * 1024,

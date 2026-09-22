@@ -90,6 +90,12 @@ export interface ImageTransforms {
    * 1
    */
   dpr?: number;
+
+  /**
+   * When the URL stops working, in epoch milliseconds.
+   * Past it the service answers `403`, however good the signature.
+   */
+  expires?: number;
 }
 
 const FITS: readonly ImageFit[] = ['cover', 'contain', 'inside'];
@@ -121,10 +127,11 @@ const FOCAL = /^(\d(?:\.\d{1,3})?)_(\d(?:\.\d{1,3})?)$/;
  *
  * @example
  * ```ts
- * parseImageTransforms('w_800,f_webp') // -> { width: 800, format: 'webp' }
- * parseImageTransforms('fp_0.25_1')    // -> { focalPoint: { x: 0.25, y: 1 } }
- * parseImageTransforms('w_800,w_600')  // -> undefined
- * parseImageTransforms('')             // -> undefined
+ * parseImageTransforms('w_800,f_webp')    // -> { width: 800, format: 'webp' }
+ * parseImageTransforms('fp_0.25_1')       // -> { focalPoint: { x: 0.25, y: 1 } }
+ * parseImageTransforms('e_1700000000000') // -> { expires: 1700000000000 }
+ * parseImageTransforms('w_800,w_600')     // -> undefined
+ * parseImageTransforms('')                // -> undefined
  * ```
  */
 export function parseImageTransforms(tokens: string): ImageTransforms | undefined {
@@ -142,21 +149,33 @@ export function parseImageTransforms(tokens: string): ImageTransforms | undefine
 }
 
 /**
- * The identity the allowlist compares: the tokens with `p` and `fp` removed.
- * They carry the upload's focal point rather than a size, so one variant has many spellings of them.
+ * The identity the allowlist compares: the tokens with `p`, `fp`, and `e` removed.
+ * They carry a focal point or an expiry rather than a size, so one variant has many spellings of them.
  *
  * @example
  * ```ts
  * variantOf('w_320,h_320,fit_inside,f_webp,fp_0.5_0.75') // -> 'w_320,h_320,fit_inside,f_webp'
  * variantOf('w_64,p_top,dpr_2')                          // -> 'w_64,dpr_2'
+ * variantOf('w_64,dpr_2,e_1700000000000')                // -> 'w_64,dpr_2'
  * variantOf('fp_0_0')                                    // -> ''
  * ```
  */
 export function variantOf(tokens: string): string {
-  return tokens
-    .split(',')
-    .filter((token) => !/^f?p_/.test(token))
-    .join(',');
+  return without(tokens, /^(f?p|e)_/);
+}
+
+/**
+ * The tokens a render is cached under: the string without its `e` token.
+ * An expiry changes no pixel, so every link to one variant shares one render.
+ *
+ * @example
+ * ```ts
+ * renderTokens('w_800,f_webp,e_1700000000000') // -> 'w_800,f_webp'
+ * renderTokens('w_800,f_webp')                 // -> 'w_800,f_webp'
+ * ```
+ */
+export function renderTokens(tokens: string): string {
+  return without(tokens, /^e_/);
 }
 
 /**
@@ -198,6 +217,11 @@ function parseToken(transforms: ImageTransforms, name: string, value: string): b
       transforms.dpr = ratio;
       return true;
     }
+    case 'e': {
+      if (!/^[1-9]\d*$/.test(value)) return false;
+      transforms.expires = Number(value);
+      return true;
+    }
     default:
       return false;
   }
@@ -216,4 +240,14 @@ function assign<K extends 'fit' | 'format' | 'position'>(
   if (found === undefined) return false;
   transforms[key] = found;
   return true;
+}
+
+/**
+ * `tokens` less every token that `dropped` matches.
+ */
+function without(tokens: string, dropped: RegExp): string {
+  return tokens
+    .split(',')
+    .filter((token) => !dropped.test(token))
+    .join(',');
 }

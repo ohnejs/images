@@ -1,19 +1,23 @@
 import { deepStrictEqual, strictEqual } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { parseImageTransforms, variantOf } from '../src/transforms.ts';
+import { parseImageTransforms, renderTokens, variantOf } from '../src/transforms.ts';
 
 describe('parseImageTransforms', () => {
   it('parses every token', () => {
-    deepStrictEqual(parseImageTransforms('w_800,h_600,fit_contain,f_webp,q_80,fp_0.3_0.6,dpr_2'), {
-      width: 800,
-      height: 600,
-      fit: 'contain',
-      format: 'webp',
-      quality: 80,
-      focalPoint: { x: 0.3, y: 0.6 },
-      dpr: 2,
-    });
+    deepStrictEqual(
+      parseImageTransforms('w_800,h_600,fit_contain,f_webp,q_80,fp_0.3_0.6,dpr_2,e_1700000000000'),
+      {
+        width: 800,
+        height: 600,
+        fit: 'contain',
+        format: 'webp',
+        quality: 80,
+        focalPoint: { x: 0.3, y: 0.6 },
+        dpr: 2,
+        expires: 1700000000000,
+      },
+    );
     deepStrictEqual(parseImageTransforms('w_800,f_webp'), { width: 800, format: 'webp' });
     deepStrictEqual(parseImageTransforms('w_64,p_top'), { width: 64, position: 'top' });
     deepStrictEqual(parseImageTransforms('fp_0.25_1'), { focalPoint: { x: 0.25, y: 1 } });
@@ -38,6 +42,11 @@ describe('parseImageTransforms', () => {
       'fp_.5_0',
       'fp_1.5_0',
       'fp_0.1234_0',
+      'e_0',
+      'e_01',
+      'e_1.5',
+      'e_-1',
+      'e_',
     ]) {
       strictEqual(parseImageTransforms(tokens), undefined, tokens);
     }
@@ -45,12 +54,24 @@ describe('parseImageTransforms', () => {
 });
 
 describe('variantOf', () => {
-  it('drops p and fp and keeps everything else', () => {
+  it('drops p, fp, and e and keeps everything else', () => {
     strictEqual(
       variantOf('w_320,h_320,fit_inside,f_webp,fp_0.5_0.75'),
       'w_320,h_320,fit_inside,f_webp',
     );
     strictEqual(variantOf('w_64,p_top,dpr_2'), 'w_64,dpr_2');
-    strictEqual(variantOf('fp_0_0'), '');
+    strictEqual(variantOf('w_64,dpr_2,e_1700000000000'), 'w_64,dpr_2');
+    strictEqual(variantOf('fp_0_0,e_1'), '');
+  });
+});
+
+describe('renderTokens', () => {
+  it('drops e and keeps everything else', () => {
+    strictEqual(
+      renderTokens('w_800,f_webp,fp_0.5_0.75,e_1700000000000'),
+      'w_800,f_webp,fp_0.5_0.75',
+    );
+    strictEqual(renderTokens('e_1700000000000,p_top'), 'p_top');
+    strictEqual(renderTokens('w_800,f_webp'), 'w_800,f_webp');
   });
 });

@@ -13,6 +13,14 @@ describe('signImageVariant', () => {
       signImageVariant('w_320,h_320,fit_inside', 'photos/sunset.jpg', 'another'),
       's9YxH4SXC6gGsS97gs_WMTAcNvgSnZe7zUBB__NeUMs',
     );
+    strictEqual(
+      signImageVariant('w_800,f_webp,e_1700000000000', 'photos/sunset.jpg', 'secret'),
+      'lznJAVjMklhx4zqJ2JblQECAwz3_EDRvDnho4upa-YA',
+    );
+    strictEqual(
+      signImageVariant('e_1700000000000', 'photos/sunset.jpg', 'secret'),
+      'lbshLgROalNk_URHWIraK7YDalfVmPq9WlenM8B9Ytg',
+    );
   });
 });
 

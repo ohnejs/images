@@ -11,7 +11,7 @@ import { createOrigin } from './origin.ts';
 import { negotiateFormat, render } from './render.ts';
 import { parseRoute } from './route.ts';
 import { verifyImageVariant } from './sign.ts';
-import { parseImageTransforms, variantOf } from './transforms.ts';
+import { parseImageTransforms, renderTokens, variantOf } from './transforms.ts';
 
 interface Answer {
   status: number;
@@ -24,7 +24,9 @@ interface Answer {
  *
  * A request is verified by signature before anything is parsed, then checked against `config.variants`.
  * An `unsigned` config skips the signature and renders whatever the first segment holds.
- * The source is read through `createOrigin`; the render is cached under its tokens, format, and ETag.
+ * A URL whose `e` token has passed is `403`; one still ahead is cached only for the time it has left.
+ * The source is read through `createOrigin`; the render is cached under `renderTokens`, format, and ETag.
+ * Only a URL with `e` reads it through the signed link, so one that never expires cannot open a private file.
  * Every response carries `Access-Control-Allow-Origin: *` and `Content-Length`.
  * `HEAD` sends the headers of the `GET` and no body.
  * A failure is one plain-text line under `Cache-Control: no-store`.
@@ -53,10 +55,13 @@ export function createImageServer(config: Config): Server {
     }
     const parsed = parseImageTransforms(transforms);
     if (parsed === undefined) return fail(400, 'Invalid transforms');
-    const variant = `${transforms}/${path}`;
+    if (parsed.expires !== undefined && parsed.expires <= Date.now()) {
+      return fail(403, 'Link expired');
+    }
+    const variant = `${renderTokens(transforms)}/${path}`;
     let source: Source | undefined;
     try {
-      source = await origin(path);
+      source = await origin(path, parsed.expires !== undefined);
     } catch {
       return fail(502, 'Source unreachable');
     }
@@ -74,7 +79,7 @@ export function createImageServer(config: Config): Server {
     }
     const headers: OutgoingHttpHeaders = {
       'Content-Type': `image/${rendered.format}`,
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': cacheControl(parsed.expires),
     };
     if (parsed.format === 'auto') headers.Vary = 'Accept';
     return { status: 200, headers, body: rendered.bytes };
@@ -102,4 +107,12 @@ function fail(status: number, line: string, headers: OutgoingHttpHeaders = {}): 
     },
     body: Buffer.from(`${line}\n`),
   };
+}
+
+/**
+ * A year in public, or in private for the whole seconds left until `expires`.
+ */
+function cacheControl(expires: number | undefined): string {
+  if (expires === undefined) return 'public, max-age=31536000';
+  return `private, max-age=${Math.max(0, Math.floor((expires - Date.now()) / 1000))}`;
 }

@@ -35,29 +35,39 @@ answers them:
 node bin.js --secret secret --variants 'w_320,h_320,fit_inside,f_webp;w_640,h_360,f_webp'
 ```
 
+If your app has private uploads, hand the service one of the secrets in ohne's `UPLOADS_SECRET`.
+The fetch behind a URL with `e` is then signed, so a private original renders through its expiring
+link:
+
+```sh
+node bin.js --secret secret --source-secret uploads-secret --source http://localhost:9002/uploads
+```
+
 ## Configuration
 
 Every setting is a flag and an environment variable, and the flag wins. `--help` lists them.
 
-| flag           | variable            | default                         | meaning                                                                                           |
-| -------------- | ------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `--port`       | `PORT`              | `9100`                          | The port to listen on.                                                                            |
-| `--host`       | `HOST`              | unset                           | The address to bind. Unset binds every interface.                                                 |
-| `--secret`     | `IMAGES_SECRET`     | required unless unsigned        | Comma-separated secrets. A URL signed by any of them is accepted, which is how you rotate.        |
-| `--source`     | `IMAGES_SOURCE`     | `http://localhost:9001/uploads` | The origin a source path is fetched from.                                                         |
-| `--variants`   | `IMAGES_VARIANTS`   | unset                           | Semicolon-separated token strings. When set, a verified URL whose tokens are not listed is `403`. |
-| `--source-ttl` | `IMAGES_SOURCE_TTL` | `60`                            | Seconds a fetched source is trusted before it is revalidated with `If-None-Match`.                |
-| `--cache-mb`   | `IMAGES_CACHE_MB`   | `256`                           | Megabytes of rendered variants kept in memory. The source bytes get the same budget.              |
-| `--unsigned`   | `IMAGES_UNSIGNED`   | off                             | Render every URL with no signature check. For your own machine only.                              |
+| flag              | variable               | default                         | meaning                                                                                                                              |
+| ----------------- | ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `--port`          | `PORT`                 | `9100`                          | The port to listen on.                                                                                                               |
+| `--host`          | `HOST`                 | unset                           | The address to bind. Unset binds every interface.                                                                                    |
+| `--secret`        | `IMAGES_SECRET`        | required unless unsigned        | Comma-separated secrets. A URL signed by any of them is accepted, which is how you rotate.                                           |
+| `--source`        | `IMAGES_SOURCE`        | `http://localhost:9001/uploads` | The origin a source path is fetched from.                                                                                            |
+| `--source-secret` | `IMAGES_SOURCE_SECRET` | unset                           | One of ohne's `UPLOADS_SECRET` values. Set, a URL with `e` fetches signed, so private uploads render too. Refused with `--unsigned`. |
+| `--variants`      | `IMAGES_VARIANTS`      | unset                           | Semicolon-separated token strings. When set, a verified URL whose tokens are not listed is `403`.                                    |
+| `--source-ttl`    | `IMAGES_SOURCE_TTL`    | `60`                            | Seconds a fetched source is trusted before it is revalidated with `If-None-Match`.                                                   |
+| `--cache-mb`      | `IMAGES_CACHE_MB`      | `256`                           | Megabytes of rendered variants kept in memory. The source bytes get the same budget.                                                 |
+| `--unsigned`      | `IMAGES_UNSIGNED`      | off                             | Render every URL with no signature check. For your own machine only.                                                                 |
 
 The `IMAGES_VARIANTS` match ignores `fp` and `p`, which carry an upload's focal point rather than a
-size. An invalid or missing required value prints one line to stderr and exits with `1`.
+size, and `e`, which carries an expiry. An invalid or missing required value prints one line to
+stderr and exits with `1`.
 
 ## What it does
 
 The protocol is ohne's
-[image variants guide](https://github.com/murisceman/ohne/blob/main/docs/uploads/images.md). A
-request for `/{signature}/{transforms}/{path}` goes through six steps.
+[image service guide](https://github.com/murisceman/ohne/blob/main/docs/uploads/image-service.md).
+A request for `/{signature}/{transforms}/{path}` goes through these steps.
 
 1. **Route.** The first segment is the signature, the second the transforms, the rest the source
    path. Fewer than three segments, or a path segment that is not lowercase letters, digits, `.`,
@@ -65,13 +75,18 @@ request for `/{signature}/{transforms}/{path}` goes through six steps.
 2. **Verify.** The signature is the base64url HMAC-SHA256 of the raw `{transforms}/{path}` string.
    It is checked in constant time against every secret before anything is parsed; a mismatch is
    `403`. Unsigned, the segment is not looked at. With `IMAGES_VARIANTS` set, tokens outside the
-   list are `403` too.
+   list are `403` too; the match ignores `e`, `fp`, and `p`. An `e` token is the URL's expiry in
+   epoch milliseconds: once it has passed, a parsed URL is `403 Link expired`.
 3. **Parse.** An empty transforms segment, an unknown token, an out-of-range value, a duplicate, or
    both `p` and `fp` is `400`.
-4. **Fetch.** The source comes from `{IMAGES_SOURCE}/{path}` and stays in memory. After
-   `IMAGES_SOURCE_TTL` the next request revalidates it with `If-None-Match`; a new `ETag` drops
-   every variant of the file, and an origin that sends no `ETag` gets a hash of the bytes instead. An
-   origin `404` is `404`, an unreachable origin `502`, both `Cache-Control: no-store`.
+4. **Fetch.** The source comes from `{IMAGES_SOURCE}/{path}` and stays in memory. With
+   `IMAGES_SOURCE_SECRET`, the fetch for a URL with `e` carries `?e=<ms>&s=<signature>`: `e` a
+   minute ahead and `s` the base64url HMAC-SHA256 of `e_<ms>/<path>` under that secret, the link
+   ohne opens a private file for. A URL without `e` fetches bare and is cached apart, so it never
+   reaches a private file. After `IMAGES_SOURCE_TTL` the next request revalidates the source with
+   `If-None-Match`; a new `ETag` drops every variant of the file, and an origin that sends no
+   `ETag` gets a hash of the bytes instead. An origin `404` is `404`, an unreachable origin `502`,
+   both `Cache-Control: no-store`.
 5. **Render.** `w` and `h` are multiplied by `dpr` before fitting. At `dpr` 1 nothing is enlarged:
    `inside` and `contain` keep the source size, `cover` shrinks the box at its own ratio until the
    source fills it. `contain` pads to the full box, transparent or white for `jpeg`. `p` and `fp`
@@ -81,8 +96,9 @@ request for `/{signature}/{transforms}/{path}` goes through six steps.
    needs. A render that fails is `500`.
 6. **Answer.** The bytes go out with `Content-Type`, `Content-Length`,
    `Cache-Control: public, max-age=31536000`, and `Access-Control-Allow-Origin: *`, and stay cached
-   in memory for the next request. `HEAD` gets the same headers and no body. Any other method is
-   `405`.
+   in memory for the next request. A URL with `e` goes out as `Cache-Control: private, max-age=<s>`,
+   the whole seconds it has left, and its render is shared with every other expiry of the same
+   variant. `HEAD` gets the same headers and no body. Any other method is `405`.
 
 ## Limits
 

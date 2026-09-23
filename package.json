@@ -36,6 +36,5 @@
   "engines": {
     "node": ">=26.0.0"
   },
-  "engineStrict": true,
   "packageManager": "pnpm@11.5.1"
 }

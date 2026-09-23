@@ -1,9 +1,14 @@
 {
-  "name": "ohne-images",
+  "name": "@ohnejs/images",
   "version": "0.0.1",
   "description": "The reference image service for the ohne uploads image protocol.",
+  "homepage": "https://github.com/ohnejs/images#readme",
   "license": "MIT",
   "author": "Muris Ceman <muris@ohne.dev>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ohnejs/images.git"
+  },
   "bin": {
     "ohne-images": "./bin.js"
   },

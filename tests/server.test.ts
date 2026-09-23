@@ -1,6 +1,7 @@
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 
 import { deepStrictEqual, ok, strictEqual } from 'node:assert';
+import { get } from 'node:http';
 import { after, before, describe, it, mock } from 'node:test';
 import sharp from 'sharp';
 
@@ -38,6 +39,18 @@ async function request(url: string, init: RequestInit = {}): Promise<Answer> {
     status: response.status,
     headers: Object.fromEntries(response.headers),
     body: Buffer.from(await response.arrayBuffer()),
+  };
+}
+
+/**
+ * A `GET` that sends `path` as written, where `fetch` would resolve its dot segments first.
+ */
+async function rawGet(base: string, path: string): Promise<Answer> {
+  const response = await new Promise<IncomingMessage>((resolve) => get(base, { path }, resolve));
+  return {
+    status: response.statusCode ?? 0,
+    headers: response.headers as Record<string, string>,
+    body: Buffer.concat(await response.toArray()),
   };
 }
 
@@ -130,9 +143,12 @@ describe('createImageServer', () => {
       `${base}/photo.jpg`,
       `${base}/sig/w_1`,
       url('w_100', 'Photo.jpg'),
-      url('w_100', '../photo.jpg'),
     ]) {
       failure(await request(target), 404, 'Not found');
+    }
+    for (const path of ['../photo.jpg', './photo.jpg']) {
+      const dots = url('w_100', path).slice(base.length);
+      failure(await rawGet(base, dots), 404, 'Not found');
     }
     const { notFound } = origin.hits;
     failure(await request(url('w_100', 'missing.jpg')), 404, 'Not found');

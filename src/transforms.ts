@@ -69,7 +69,7 @@ export interface ImageTransforms {
   position?: ImagePosition;
 
   /**
-   * The point a crop keeps in view, each axis `0` to `1`, rounded to three decimals.
+   * The point a crop keeps in view, each axis `0` to `1` with at most three decimals.
    */
   focalPoint?: {
     /**
@@ -150,7 +150,7 @@ export function parseImageTransforms(tokens: string): ImageTransforms | undefine
 
 /**
  * The identity the allowlist compares: the tokens with `p`, `fp`, and `e` removed.
- * They carry a focal point or an expiry rather than a size, so one variant has many spellings of them.
+ * They carry a crop position or an expiry rather than a size, so one variant has many spellings of them.
  *
  * @example
  * ```ts

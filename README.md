@@ -49,14 +49,8 @@ Then give both sides the same `IMAGES_SECRET`, so the service renders only URLs 
 IMAGES_SECRET=a-long-random-value npx @ohnejs/images
 ```
 
-## Where originals come from
-
-The service fetches each original from your app's `/uploads` route. When your app runs anywhere but
-`localhost:9001`, point `--source` there:
-
-```sh
-IMAGES_SECRET=a-long-random-value npx @ohnejs/images --source https://api.example.com/uploads
-```
+The service fetches each original from your app's `/uploads` route, `http://localhost:9001/uploads`
+by default. Elsewhere, pass `--source https://api.example.com/uploads`.
 
 ## Allowing only your variants
 

@@ -5,11 +5,11 @@ import { parseFlags, readConfig } from '../src/config.ts';
 
 const REQUIRED = { IMAGES_SECRET: 'a' };
 
+const SECRET_UNSIGNED =
+  '`IMAGES_SECRET` cannot be set with `--unsigned`: an unsigned instance would render any private original for anyone.';
+
 const SECRET_REQUIRED =
   '`IMAGES_SECRET` is required unless `--unsigned` is set: comma-separated secrets, a URL signed by any of them is accepted.';
-
-const SOURCE_SECRET_UNSIGNED =
-  '`IMAGES_SOURCE_SECRET` cannot be set with `--unsigned`: an unsigned instance would render any private original for anyone.';
 
 describe('readConfig', () => {
   it('fills the defaults', () => {
@@ -19,7 +19,6 @@ describe('readConfig', () => {
       secrets: ['a'],
       unsigned: false,
       source: 'http://localhost:9001/uploads',
-      sourceSecret: undefined,
       variants: undefined,
       sourceTTL: 60_000,
       cacheBytes: 268_435_456,
@@ -30,16 +29,13 @@ describe('readConfig', () => {
     const config = readConfig({
       IMAGES_SECRET: ' a , b ,',
       IMAGES_SOURCE: 'http://h:9002/uploads/',
-      IMAGES_SOURCE_SECRET: ' s ',
       HOST: '  ',
       PORT: '0',
     });
     deepStrictEqual(config.secrets, ['a', 'b']);
     strictEqual(config.source, 'http://h:9002/uploads');
-    strictEqual(config.sourceSecret, 's');
     strictEqual(config.host, undefined);
     strictEqual(config.port, 0);
-    strictEqual(readConfig({ ...REQUIRED, IMAGES_SOURCE_SECRET: ' ' }).sourceSecret, undefined);
   });
 
   it('needs no secret when unsigned', () => {
@@ -65,6 +61,7 @@ describe('readConfig', () => {
     const cases: [Record<string, string | undefined>, string][] = [
       [{}, SECRET_REQUIRED],
       [{ IMAGES_SECRET: ' , ' }, SECRET_REQUIRED],
+      [{ IMAGES_UNSIGNED: '1', IMAGES_SECRET: 's' }, SECRET_UNSIGNED],
       [
         { ...REQUIRED, IMAGES_SOURCE: 'localhost:9002' },
         '`IMAGES_SOURCE` must be an `http` or `https` URL, got `localhost:9002`.',
@@ -74,7 +71,6 @@ describe('readConfig', () => {
         '`IMAGES_SOURCE` must be an `http` or `https` URL, got `ftp://x`.',
       ],
       [{ ...REQUIRED, IMAGES_UNSIGNED: 'yes' }, '`IMAGES_UNSIGNED` must be `1` or `0`, got `yes`.'],
-      [{ IMAGES_UNSIGNED: '1', IMAGES_SOURCE_SECRET: 's' }, SOURCE_SECRET_UNSIGNED],
       [
         { ...REQUIRED, PORT: 'abc' },
         '`PORT` must be an integer between `0` and `65535`, got `abc`.',
@@ -118,7 +114,6 @@ describe('parseFlags', () => {
         '--secret',
         'a,b',
         '--source=http://h/u',
-        '--source-secret=s',
         '--variants',
         'w_1;w_2',
         '--source-ttl=5',
@@ -131,7 +126,6 @@ describe('parseFlags', () => {
         HOST: '127.0.0.1',
         IMAGES_SECRET: 'a,b',
         IMAGES_SOURCE: 'http://h/u',
-        IMAGES_SOURCE_SECRET: 's',
         IMAGES_VARIANTS: 'w_1;w_2',
         IMAGES_SOURCE_TTL: '5',
         IMAGES_CACHE_MB: '8',

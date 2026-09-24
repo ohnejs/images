@@ -23,7 +23,7 @@ pnpm exec ohne-images --unsigned
 ## Running it locally
 
 `--unsigned` skips the signature check, and originals come from `http://localhost:9001/uploads`,
-where `ohne dev` serves them. Run ohne without `IMAGES_SECRET` and the two work together with no
+where `ohne dev` serves them. Run ohne without `UPLOADS_SECRET` and the two work together with no
 secret. An unsigned service renders for anyone who can reach it, so keep it on your own machine.
 
 ## Connecting ohne
@@ -43,7 +43,8 @@ export default defineConfig({
 });
 ```
 
-Then give both sides the same `IMAGES_SECRET`, so the service renders only URLs ohne signed:
+Then give the service your app's `UPLOADS_SECRET` as its `IMAGES_SECRET`, so it renders only URLs
+ohne signed:
 
 ```sh
 IMAGES_SECRET=a-long-random-value npx @ohnejs/images
@@ -77,28 +78,24 @@ Any other URL gets a `403`. See
 ## Private files
 
 A [private file's](https://ohne.dev/docs/uploads/private-files) original answers `404` to a plain
-fetch. To render its variants, pass one of your app's `UPLOADS_SECRET` values as `--source-secret`:
-
-```sh
-IMAGES_SECRET=a-long-random-value npx @ohnejs/images \
-  --source https://api.example.com/uploads --source-secret uploads-secret
-```
+fetch. The service fetches it through a link it signs with its own secret, which your app checks
+against `UPLOADS_SECRET`. With that value as `IMAGES_SECRET`, as above, nothing else is needed. An
+unsigned instance has no secret, so it cannot open a private original.
 
 ## Configuration
 
 Every setting is a flag and an environment variable, and the flag wins. `--help` lists them.
 
-| flag              | variable               | default                         | meaning                                                                                   |
-| ----------------- | ---------------------- | ------------------------------- | ----------------------------------------------------------------------------------------- |
-| `--port`          | `PORT`                 | `9100`                          | The port to listen on.                                                                    |
-| `--host`          | `HOST`                 | unset                           | The address to bind. Unset binds every interface.                                         |
-| `--secret`        | `IMAGES_SECRET`        | required unless unsigned        | Comma-separated secrets. A URL signed by any of them is accepted.                         |
-| `--source`        | `IMAGES_SOURCE`        | `http://localhost:9001/uploads` | The `http` or `https` origin originals are fetched from.                                  |
-| `--source-secret` | `IMAGES_SOURCE_SECRET` | unset                           | One of your app's `UPLOADS_SECRET` values, for private files. Refused with `--unsigned`.  |
-| `--variants`      | `IMAGES_VARIANTS`      | unset                           | Semicolon-separated token strings. Unset renders every signed URL.                        |
-| `--source-ttl`    | `IMAGES_SOURCE_TTL`    | `60`                            | Seconds a fetched original is trusted before it is checked again.                         |
-| `--cache-mb`      | `IMAGES_CACHE_MB`      | `256`                           | MiB of rendered variants kept in memory. Fetched originals get a budget of the same size. |
-| `--unsigned`      | `IMAGES_UNSIGNED`      | off                             | Render every URL with no signature check. For your own machine only.                      |
+| flag           | variable            | default                         | meaning                                                                                   |
+| -------------- | ------------------- | ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `--port`       | `PORT`              | `9100`                          | The port to listen on.                                                                    |
+| `--host`       | `HOST`              | unset                           | The address to bind. Unset binds every interface.                                         |
+| `--secret`     | `IMAGES_SECRET`     | required unless unsigned        | Comma-separated secrets. A URL signed by any is accepted; the first opens private files.  |
+| `--source`     | `IMAGES_SOURCE`     | `http://localhost:9001/uploads` | The `http` or `https` origin originals are fetched from.                                  |
+| `--variants`   | `IMAGES_VARIANTS`   | unset                           | Semicolon-separated token strings. Unset renders every signed URL.                        |
+| `--source-ttl` | `IMAGES_SOURCE_TTL` | `60`                            | Seconds a fetched original is trusted before it is checked again.                         |
+| `--cache-mb`   | `IMAGES_CACHE_MB`   | `256`                           | MiB of rendered variants kept in memory. Fetched originals get a budget of the same size. |
+| `--unsigned`   | `IMAGES_UNSIGNED`   | off                             | Render every URL with no signature check. For your own machine only.                      |
 
 ## What it does
 
@@ -119,7 +116,8 @@ Run it as one process under a process manager or in a container. Its caches live
 empty on restart, so put a CDN in front for a durable layer.
 
 To change `IMAGES_SECRET` without breaking pages, follow
-[Rotating the secret](https://ohne.dev/docs/uploads/image-variants#rotating-the-secret).
+[Rotating the secret](https://ohne.dev/docs/uploads/image-variants#rotating-the-secret). The
+service lists them the same way ohne does: the first signs, any verifies.
 
 ## Limits
 

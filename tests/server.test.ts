@@ -226,7 +226,7 @@ describe('createImageServer', () => {
     const own = new Map([['scan.png', files.get('photo.png')!]]);
     const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
     try {
-      const at = await start(secured.url, { sourceSecret: 'uploads', sourceTTL: 60_000 });
+      const at = await start(secured.url, { secrets: ['uploads', 'test'], sourceTTL: 60_000 });
       const expiring = await request(
         variantURL(at, `w_90,e_${Date.now() + 3_600_000}`, 'scan.png'),
       );

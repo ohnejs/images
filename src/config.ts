@@ -20,6 +20,7 @@ export interface Config {
 
   /**
    * The secrets a signature may verify under, in the order `IMAGES_SECRET` lists them.
+   * The first also signs the origin fetch behind a URL with `e`, which opens a private original.
    * Empty only when `unsigned`.
    */
   secrets: string[];
@@ -40,13 +41,6 @@ export interface Config {
    * 'http://localhost:9001/uploads'
    */
   source: string;
-
-  /**
-   * One of the app's `UPLOADS_SECRET` values, signing the origin fetch behind every URL with `e`.
-   * It lets such a URL read a private original; the origin answers any other fetch for one `404`.
-   * Refused together with `unsigned`: an unsigned instance would render any private original for anyone.
-   */
-  sourceSecret: string | undefined;
 
   /**
    * The variants a verified URL may ask for, each reduced by `variantOf`.
@@ -78,7 +72,6 @@ const FLAGS: Record<string, string> = {
   host: 'HOST',
   secret: 'IMAGES_SECRET',
   source: 'IMAGES_SOURCE',
-  'source-secret': 'IMAGES_SOURCE_SECRET',
   variants: 'IMAGES_VARIANTS',
   'source-ttl': 'IMAGES_SOURCE_TTL',
   'cache-mb': 'IMAGES_CACHE_MB',
@@ -90,7 +83,7 @@ const FLAGS: Record<string, string> = {
  *
  * Every value is trimmed and `''` counts as unset.
  * `IMAGES_SECRET` is required unless `IMAGES_UNSIGNED` is on; the rest fall back to their defaults.
- * `IMAGES_SOURCE_SECRET` is refused together with `IMAGES_UNSIGNED`.
+ * `IMAGES_SECRET` is refused together with `IMAGES_UNSIGNED`, since the first secret opens private originals.
  * The first invalid value throws one line naming the variable, what it must be, and what it got.
  *
  * @example
@@ -107,15 +100,14 @@ export function readConfig(env: Record<string, string | undefined>): Config {
       '`IMAGES_SECRET` is required unless `--unsigned` is set: comma-separated secrets, a URL signed by any of them is accepted.',
     );
   }
+  if (unsigned && secrets.length > 0) {
+    throw new Error(
+      '`IMAGES_SECRET` cannot be set with `--unsigned`: an unsigned instance would render any private original for anyone.',
+    );
+  }
   const source = env.IMAGES_SOURCE?.trim() || DEFAULT_SOURCE;
   if (!/^https?:$/.test(URL.parse(source)?.protocol ?? '')) {
     throw new Error(`\`IMAGES_SOURCE\` must be an \`http\` or \`https\` URL, got \`${source}\`.`);
-  }
-  const sourceSecret = env.IMAGES_SOURCE_SECRET?.trim() || undefined;
-  if (sourceSecret !== undefined && unsigned) {
-    throw new Error(
-      '`IMAGES_SOURCE_SECRET` cannot be set with `--unsigned`: an unsigned instance would render any private original for anyone.',
-    );
   }
   const port = integer(env, 'PORT', 9100, 0, 65535, 'an integer between `0` and `65535`');
   const seconds = integer(env, 'IMAGES_SOURCE_TTL', 60, 0, Infinity, 'a whole number of seconds');
@@ -139,7 +131,6 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     secrets,
     unsigned,
     source: source.replace(/\/+$/, ''),
-    sourceSecret,
     variants: variants.length > 0 ? new Set(variants.map(variantOf)) : undefined,
     sourceTTL: seconds * 1000,
     cacheBytes: megabytes * 1024 * 1024,

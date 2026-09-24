@@ -153,7 +153,6 @@ export function testConfig(source: string, overrides: Partial<Config> = {}): Con
     secrets: ['test'],
     unsigned: false,
     source,
-    sourceSecret: undefined,
     variants: undefined,
     sourceTTL: 0,
     cacheBytes: 64 * 1024 * 1024,

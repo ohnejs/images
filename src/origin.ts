@@ -49,7 +49,8 @@ const SOURCE_LINK_TTL = 60_000;
  * A `304` renews the entry, a `200` replaces it, and a `404` drops it and resolves `undefined`.
  * Another status, a refused connection, a timeout, or a body past `limit` rejects.
  * A rejection keeps the stale entry, so an origin outage evicts nothing; the server answers `502`.
- * With `config.sourceSecret`, `get(path, true)` fetches with a signed `?e=&s=` that opens a private original.
+ * `get(path, true)` signs the fetch under the first of `config.secrets`, so it opens a private original.
+ * With no secrets, as when `config.unsigned`, it fetches bare and a private original answers `404`.
  * A signed source is cached apart from a bare one, so a bare read never sees a private original.
  *
  * @example
@@ -105,7 +106,7 @@ export function createOrigin(
   }
 
   return (path, signed = false) => {
-    const secret = signed ? config.sourceSecret : undefined;
+    const secret = signed ? config.secrets.at(0) : undefined;
     const key = `${secret === undefined ? 'bare' : 'signed'} ${path}`;
     const cached = sources.get(key);
     if (cached && Date.now() - cached.fetchedAt < config.sourceTTL) return Promise.resolve(cached);

@@ -7,15 +7,14 @@ import { createImageServer } from './server.ts';
 
 const USAGE = `Usage: ohne-images [flags]
 
-  --port <number>            PORT                  9100
-  --host <address>           HOST                  every interface
-  --secret <list>            IMAGES_SECRET         comma-separated; required unless --unsigned
-  --source <origin>          IMAGES_SOURCE         http://localhost:9001/uploads
-  --source-secret <secret>   IMAGES_SOURCE_SECRET  signs an expiring URL's fetch; one of ohne's UPLOADS_SECRET values
-  --variants <list>          IMAGES_VARIANTS       semicolon-separated token strings; unset renders every size
-  --source-ttl <s>           IMAGES_SOURCE_TTL     60
-  --cache-mb <number>        IMAGES_CACHE_MB       256
-  --unsigned                 IMAGES_UNSIGNED       render every URL without a signature check
+  --port <number>      PORT               9100
+  --host <address>     HOST               every interface
+  --secret <list>      IMAGES_SECRET      comma-separated; required unless --unsigned
+  --source <origin>    IMAGES_SOURCE      http://localhost:9001/uploads
+  --variants <list>    IMAGES_VARIANTS    semicolon-separated token strings; unset renders every size
+  --source-ttl <s>     IMAGES_SOURCE_TTL  60
+  --cache-mb <number>  IMAGES_CACHE_MB    256
+  --unsigned           IMAGES_UNSIGNED    render every URL without a signature check
   --help
 
 A flag wins over its environment variable.

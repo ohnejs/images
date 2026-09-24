@@ -69,22 +69,34 @@ describe('createOrigin', () => {
     }
   });
 
-  it('signs a fetch under the source secret when asked to', async () => {
+  it('signs a fetch under the first secret when asked to', async () => {
     const own = new Map([['a.png', files.get('photo.png')!]]);
     const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
     try {
-      const get = createOrigin(testConfig(secured.url, { sourceSecret: 'uploads' }));
+      const get = createOrigin(testConfig(secured.url, { secrets: ['uploads', 'other'] }));
       const first = await get('a.png', true);
       const second = await get('a.png', true);
       ok(first && second);
       strictEqual(second.etag, first.etag);
       deepStrictEqual(secured.hits, { ok: 1, notModified: 1, notFound: 0, refused: 0 });
       strictEqual(await get('a.png'), undefined);
-      for (const sourceSecret of [undefined, 'other']) {
-        const plain = createOrigin(testConfig(secured.url, { sourceSecret }));
+      for (const secrets of [[], ['other']]) {
+        const plain = createOrigin(testConfig(secured.url, { secrets }));
         strictEqual(await plain('a.png', true), undefined);
       }
       strictEqual(secured.hits.refused, 3);
+    } finally {
+      secured.close();
+    }
+  });
+
+  it('signs under the first secret only, never a later one', async () => {
+    const own = new Map([['a.png', files.get('photo.png')!]]);
+    const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
+    try {
+      const get = createOrigin(testConfig(secured.url, { secrets: ['new', 'uploads'] }));
+      strictEqual(await get('a.png', true), undefined);
+      deepStrictEqual(secured.hits, { ok: 0, notModified: 0, notFound: 0, refused: 1 });
     } finally {
       secured.close();
     }
@@ -95,7 +107,7 @@ describe('createOrigin', () => {
     const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
     try {
       const get = createOrigin(
-        testConfig(secured.url, { sourceSecret: 'uploads', sourceTTL: 60_000 }),
+        testConfig(secured.url, { secrets: ['uploads'], sourceTTL: 60_000 }),
       );
       ok(await get('a.png', true));
       strictEqual(await get('a.png'), undefined);

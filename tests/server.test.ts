@@ -255,6 +255,21 @@ describe('createImageServer', () => {
     }
   });
 
+  it('renders a cold variant once under concurrent requests for it', async () => {
+    const set = mock.method(LRU.prototype, 'set');
+    try {
+      const target = url('w_170,f_webp', 'photo.jpg');
+      const answers = await Promise.all(Array.from({ length: 8 }, () => request(target)));
+      ok(answers.every((answer) => answer.status === 200));
+      const renders = set.mock.calls.filter((call) =>
+        String(call.arguments[0]).startsWith('w_170,f_webp/'),
+      );
+      strictEqual(renders.length, 1);
+    } finally {
+      set.mock.restore();
+    }
+  });
+
   it('negotiates f_auto from Accept and varies on it', async () => {
     const target = url('w_100,f_auto', 'photo.jpg');
     const avif = await request(target, { headers: { Accept: 'image/avif,image/webp' } });

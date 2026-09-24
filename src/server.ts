@@ -26,6 +26,7 @@ interface Answer {
  * An `unsigned` config skips the signature and renders whatever the first segment holds.
  * A URL whose `e` token has passed is `403`; one still ahead is cached only for the time it has left.
  * The source is read through `createOrigin`; the render is cached under `renderTokens`, format, and ETag.
+ * Concurrent misses for one variant share a single render, as the dashboard asks for each variant twice at once.
  * Only a URL with `e` reads it through the signed link, so one that never expires cannot open a private file.
  * Every response carries `Access-Control-Allow-Origin: *` and `Content-Length`.
  * `HEAD` sends the headers of the `GET` and no body.
@@ -38,6 +39,7 @@ interface Answer {
  */
 export function createImageServer(config: Config): Server {
   const variants = new LRU<Rendered>(config.cacheBytes);
+  const rendering = new Map<string, Promise<Rendered>>();
   const origin = createOrigin(config);
 
   async function answer(req: IncomingMessage): Promise<Answer> {
@@ -70,12 +72,21 @@ export function createImageServer(config: Config): Server {
     const key = `${variant}|${format ?? ''}|${source.etag}`;
     let rendered = variants.get(key);
     if (rendered === undefined) {
+      let pending = rendering.get(key);
+      if (pending === undefined) {
+        pending = render(source.bytes, parsed, format)
+          .then((result) => {
+            variants.set(key, result);
+            return result;
+          })
+          .finally(() => rendering.delete(key));
+        rendering.set(key, pending);
+      }
       try {
-        rendered = await render(source.bytes, parsed, format);
+        rendered = await pending;
       } catch {
         return fail(500, 'Render failed');
       }
-      variants.set(key, rendered);
     }
     const headers: OutgoingHttpHeaders = {
       'Content-Type': `image/${rendered.format}`,

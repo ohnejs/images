@@ -1,10 +1,13 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
+import { createServer } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
 import type { FixtureOrigin } from './_fixtures.ts';
 
 import { createOrigin } from '../src/origin.ts';
-import { fixtures, serveFixtures, testConfig } from './_fixtures.ts';
+import { fixtures, listen, serveFixtures, testConfig } from './_fixtures.ts';
+
+const ahead = Date.now() + 3_600_000;
 
 describe('createOrigin', () => {
   let files: Map<string, Buffer>;
@@ -74,19 +77,36 @@ describe('createOrigin', () => {
     const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
     try {
       const get = createOrigin(testConfig(secured.url, { secrets: ['uploads', 'other'] }));
-      const first = await get('a.png', true);
-      const second = await get('a.png', true);
+      const first = await get('a.png', ahead);
+      const second = await get('a.png', ahead);
       ok(first && second);
       strictEqual(second.etag, first.etag);
       deepStrictEqual(secured.hits, { ok: 1, notModified: 1, notFound: 0, refused: 0 });
       strictEqual(await get('a.png'), undefined);
       for (const secrets of [[], ['other']]) {
         const plain = createOrigin(testConfig(secured.url, { secrets }));
-        strictEqual(await plain('a.png', true), undefined);
+        strictEqual(await plain('a.png', ahead), undefined);
       }
       strictEqual(secured.hits.refused, 3);
     } finally {
       secured.close();
+    }
+  });
+
+  it('signs the fetch with the expiry it was asked for', async () => {
+    const requested: string[] = [];
+    const server = createServer((req, res) => {
+      requested.push(req.url ?? '');
+      res.writeHead(404);
+      res.end();
+    });
+    const url = await listen(server);
+    try {
+      const get = createOrigin(testConfig(url, { secrets: ['uploads'] }));
+      await get('a.png', ahead);
+      strictEqual(new URL(requested[0], url).searchParams.get('e'), String(ahead));
+    } finally {
+      server.close();
     }
   });
 
@@ -95,7 +115,7 @@ describe('createOrigin', () => {
     const secured = await serveFixtures(own, { sourceSecret: 'uploads' });
     try {
       const get = createOrigin(testConfig(secured.url, { secrets: ['new', 'uploads'] }));
-      strictEqual(await get('a.png', true), undefined);
+      strictEqual(await get('a.png', ahead), undefined);
       deepStrictEqual(secured.hits, { ok: 0, notModified: 0, notFound: 0, refused: 1 });
     } finally {
       secured.close();
@@ -109,9 +129,9 @@ describe('createOrigin', () => {
       const get = createOrigin(
         testConfig(secured.url, { secrets: ['uploads'], sourceTTL: 60_000 }),
       );
-      ok(await get('a.png', true));
+      ok(await get('a.png', ahead));
       strictEqual(await get('a.png'), undefined);
-      ok(await get('a.png', true));
+      ok(await get('a.png', ahead));
       deepStrictEqual(secured.hits, { ok: 1, notModified: 0, notFound: 0, refused: 1 });
     } finally {
       secured.close();

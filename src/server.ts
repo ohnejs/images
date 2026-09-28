@@ -63,7 +63,7 @@ export function createImageServer(config: Config): Server {
     const variant = `${renderTokens(transforms)}/${path}`;
     let source: Source | undefined;
     try {
-      source = await origin(path, parsed.expires !== undefined);
+      source = await origin(path, parsed.expires);
     } catch {
       return fail(502, 'Source unreachable');
     }

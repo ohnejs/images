@@ -37,11 +37,6 @@ const SOURCE_LIMIT = 64 * 1024 * 1024;
 const SOURCE_TIMEOUT = 10_000;
 
 /**
- * Milliseconds the link of a signed origin fetch lives, well past `SOURCE_TIMEOUT`.
- */
-const SOURCE_LINK_TTL = 60_000;
-
-/**
  * A reader of source files under `config.source`, cached per path and revalidated after `config.sourceTTL`.
  *
  * `get(path)` resolves the cached `Source` while it is younger than the TTL and touches no network.
@@ -49,7 +44,8 @@ const SOURCE_LINK_TTL = 60_000;
  * A `304` renews the entry, a `200` replaces it, and a `404` drops it and resolves `undefined`.
  * Another status, a refused connection, a timeout, or a body past `limit` rejects.
  * A rejection keeps the stale entry, so an origin outage evicts nothing; the server answers `502`.
- * `get(path, true)` signs the fetch under the first of `config.secrets`, so it opens a private original.
+ * `get(path, expires)` signs the fetch under the first of `config.secrets`, so it opens a private original.
+ * It carries the variant URL's own `expires`, so ohne holds the fetch to its link ceiling.
  * With no secrets, as when `config.unsigned`, it fetches bare and a private original answers `404`.
  * A signed source is cached apart from a bare one, so a bare read never sees a private original.
  *
@@ -57,15 +53,15 @@ const SOURCE_LINK_TTL = 60_000;
  * ```ts
  * const origin = createOrigin(config)
  *
- * await origin('photos/sunset.jpg')      // -> { bytes: <Buffer ...>, etag: '"5f2a"', ... }
- * await origin('private/scan.jpg', true) // -> { bytes: <Buffer ...>, etag: '"9c1e"', ... }
- * await origin('private/scan.jpg')       // -> undefined
+ * await origin('photos/sunset.jpg')               // -> { bytes: <Buffer ...>, etag: '"5f2a"', ... }
+ * await origin('private/scan.jpg', 1700000000000) // -> { bytes: <Buffer ...>, etag: '"9c1e"', ... }
+ * await origin('private/scan.jpg')                // -> undefined
  * ```
  */
 export function createOrigin(
   config: Config,
   limit = SOURCE_LIMIT,
-): (path: string, signed?: boolean) => Promise<Source | undefined> {
+): (path: string, expires?: number) => Promise<Source | undefined> {
   const sources = new LRU<Source>(config.cacheBytes);
   const inflight = new Map<string, Promise<Source | undefined>>();
 
@@ -105,15 +101,15 @@ export function createOrigin(
     throw new Error(`Source answered ${response.status}`);
   }
 
-  return (path, signed = false) => {
-    const secret = signed ? config.secrets.at(0) : undefined;
+  return (path, expires) => {
+    const secret = expires === undefined ? undefined : config.secrets.at(0);
     const key = `${secret === undefined ? 'bare' : 'signed'} ${path}`;
     const cached = sources.get(key);
     if (cached && Date.now() - cached.fetchedAt < config.sourceTTL) return Promise.resolve(cached);
     let pending = inflight.get(key);
     if (pending === undefined) {
-      pending = revalidate(key, sourceURL(config.source, path, secret), cached).finally(() =>
-        inflight.delete(key),
+      pending = revalidate(key, sourceURL(config.source, path, secret, expires), cached).finally(
+        () => inflight.delete(key),
       );
       inflight.set(key, pending);
     }
@@ -125,9 +121,13 @@ export function createOrigin(
  * The URL `path` is fetched from under `source`: bare, or carrying `?e=&s=` signed under `secret`.
  * The signature covers `e_<expires>/<path>`, the string ohne verifies a link to a private file by.
  */
-function sourceURL(source: string, path: string, secret: string | undefined): string {
+function sourceURL(
+  source: string,
+  path: string,
+  secret: string | undefined,
+  expires: number | undefined,
+): string {
   const url = `${source}/${path}`;
-  if (secret === undefined) return url;
-  const expires = Date.now() + SOURCE_LINK_TTL;
+  if (secret === undefined || expires === undefined) return url;
   return `${url}?e=${expires}&s=${signImageVariant(`e_${expires}`, path, secret)}`;
 }

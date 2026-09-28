@@ -79,8 +79,9 @@ Any other URL gets a `403`. See
 
 A [private file's](https://ohne.dev/docs/uploads/private-files) original answers `404` to a plain
 fetch. The service fetches it through a link it signs with its own secret, which your app checks
-against `UPLOADS_SECRET`. With that value as `IMAGES_SECRET`, as above, nothing else is needed. An
-unsigned instance has no secret, so it cannot open a private original.
+against `UPLOADS_SECRET`. The link expires with the variant URL, so your app's `uploads.linkMaxAge`
+caps it too. With that value as `IMAGES_SECRET`, as above, nothing else is needed. An unsigned
+instance has no secret, so it cannot open a private original.
 
 ## Configuration
 

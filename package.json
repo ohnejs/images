@@ -17,6 +17,9 @@
     "src"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "format": "oxfmt",
     "lint": "oxlint",

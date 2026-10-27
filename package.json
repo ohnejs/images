@@ -10,7 +10,7 @@
     "url": "git+https://github.com/ohnejs/images.git"
   },
   "bin": {
-    "ohne-images": "./bin.js"
+    "ohne-images": "bin.js"
   },
   "files": [
     "bin.js",
